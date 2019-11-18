@@ -92,7 +92,7 @@ class HandTracker():
        
     @staticmethod
     def _sigm(x):
-        return 1 / (1 + np.exp(-x) )
+        return 1 / (1 + np.exp(-x.astype('float64')).astype('float32') )
     
     @staticmethod
     def _pad1(x):
