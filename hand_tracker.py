@@ -23,6 +23,7 @@ class HandTracker():
 
     def __init__(self, palm_model, joint_model, anchors_path,
                 box_enlarge=1.5, box_shift=0.2):
+        self._source = None
         self.box_shift = box_shift
         self.box_enlarge = box_enlarge
 
@@ -46,6 +47,7 @@ class HandTracker():
         
         self.in_idx_joint = self.interp_joint.get_input_details()[0]['index']
         self.out_idx_joint = self.interp_joint.get_output_details()[0]['index']
+        self.out_idx_joint_hand_flag = self.interp_joint.get_output_details()[1]['index']
 
         # 90° rotation matrix used to create the alignment trianlge        
         self.R90 = np.r_[[[0,1],[-1,0]]]
@@ -105,7 +107,8 @@ class HandTracker():
         self.interp_joint.invoke()
 
         joints = self.interp_joint.get_tensor(self.out_idx_joint)
-        return joints.reshape(-1,2)
+        hand_flag = self.interp_joint.get_tensor(self.out_idx_joint_hand_flag)
+        return joints.reshape(-1,2), hand_flag
 
     def detect_hand(self, img_norm):
         assert -1 <= img_norm.min() and img_norm.max() <= 1,\
@@ -147,7 +150,7 @@ class HandTracker():
         # TODO: replace triangle with the bbox directly
         source = self._get_triangle(keypoints[0], keypoints[2], side)
         source -= (keypoints[0] - keypoints[2]) * self.box_shift
-        return source, keypoints
+        return source, keypoints, side
 
     def preprocess_img(self, img):
         # fit the image into a 256x256 square
@@ -166,25 +169,29 @@ class HandTracker():
 
     def __call__(self, img):
         img_pad, img_norm, pad = self.preprocess_img(img)
-        
-        source, keypoints = self.detect_hand(img_norm)
-        if source is None:
+
+        if self._source is None:
+            self._source, keypoints, self._side = self.detect_hand(img_norm)
+        if self._source is None:
             return None, None
 
         # calculating transformation from img_pad coords
         # to img_landmark coords (cropped hand image)
         scale = max(img.shape) / 256
         Mtr = cv2.getAffineTransform(
-            source * scale,
+            self._source * scale,
             self._target_triangle
         )
         
         img_landmark = cv2.warpAffine(
             self._im_normalize(img_pad), Mtr, (256,256)
         )
-        
-        joints = self.predict_joints(img_landmark)
-        
+
+        joints, hand_flag = self.predict_joints(img_landmark)
+
+        if hand_flag < 0.1:
+            self._source = None
+            return None, None
         # adding the [0,0,1] row to make the matrix square
         Mtr = self._pad1(Mtr.T).T
         Mtr[2,:2] = 0
