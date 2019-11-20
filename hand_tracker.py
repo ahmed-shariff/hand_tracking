@@ -108,7 +108,11 @@ class HandTracker():
 
         joints = self.interp_joint.get_tensor(self.out_idx_joint)
         hand_flag = self.interp_joint.get_tensor(self.out_idx_joint_hand_flag)
-        return joints.reshape(-1,2), hand_flag
+        if len(joints[0]) == 63:
+            joints = joints.reshape(-1, 3)
+        else:
+            joints = joints.reshape(-1, 2)
+        return joints, hand_flag
 
     def detect_hand(self, img_norm):
         assert -1 <= img_norm.min() and img_norm.max() <= 1,\
@@ -130,7 +134,7 @@ class HandTracker():
         candidate_anchors = self.anchors[detecion_mask]
 
         if candidate_detect.shape[0] == 0:
-            print("No hands found")
+            # print("No hands found")
             return None, None, None
         # picking the widest suggestion while NMS is not implemented
         max_idx = np.argmax(candidate_detect[:, 3])
@@ -199,9 +203,10 @@ class HandTracker():
         Minv = np.linalg.inv(Mtr)
 
         # projecting keypoints back into original image coordinate space
-        kp_orig = (self._pad1(joints) @ Minv.T)[:,:2]
+        kp_orig = (self._pad1(joints[:, :2]) @ Minv.T)[:,:2]
         box_orig = (self._target_box @ Minv.T)[:,:2]
         kp_orig -= pad[::-1]
         box_orig -= pad[::-1]
-        
+        if len(joints[0]) == 3:
+            kp_orig = np.concatenate((kp_orig, joints[:, 2:3]), axis=1)
         return kp_orig, box_orig
