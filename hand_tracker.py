@@ -94,7 +94,10 @@ class HandTracker():
        
     @staticmethod
     def _sigm(x):
-        return 1 / (1 + np.exp(-x.astype('float64')).astype('float32') )
+        try:
+            return 1 / (1 + np.exp(-x.astype('float64')).astype('float32') )
+        except FloatingPointError:
+            return 1
     
     @staticmethod
     def _pad1(x):
